@@ -3,6 +3,8 @@ import os
 
 from openai import OpenAI
 
+SYSTEM_PROMPT = """You are a code analysis agent. Given a goal, use the available tools to inspect files and return concise, factual answers. Always cite the file paths you read. Never invent file contents."""
+
 def list_files(directory: str) -> str:
     """List files in a directory."""
     try:
@@ -79,6 +81,7 @@ def run_agent(goal: str, max_steps: int = 10) -> str:
             response = client.responses.create(
                 model="gpt-5-mini",
                 max_output_tokens=4096,
+                instructions=SYSTEM_PROMPT,
                 tools=tools,
                 input=messages,
             )
