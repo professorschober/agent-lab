@@ -213,6 +213,7 @@ def run_agent(
     if memory is not None:
         def remember_fact(key: str, value: str, source: str) -> str:
             memory.remember(key, value, source)
+            print(f"Remember: gespeichert | Schlüssel: {key} | Fakt: {value} | Quelle: {source}", flush=True)
             return encoded({"saved": True, "key": key})
 
         available_tools["remember"] = remember_fact
