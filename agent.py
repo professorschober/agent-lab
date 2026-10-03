@@ -205,6 +205,7 @@ def run_agent(
     memory: Memory | None = None,
     web: bool = False,
     session: str = "default",
+    mcp: bool = False,
 ) -> str:
     """Run an agent loop until the goal is reached or max_steps exceeded."""
     available_tools = dict(TOOLS)
@@ -244,6 +245,13 @@ def run_agent(
     ]
     if web:
         tools.append({"type": "web_search"})
+    if mcp:
+        tools.append({
+            "type": "mcp",
+            "server_label": "openai_docs",
+            "server_url": "https://developers.openai.com/mcp",
+            "require_approval": "never",
+        })
     messages = [
         response_input_item(item)
         for item in (memory.load(session) if memory is not None else [])
@@ -271,6 +279,15 @@ def run_agent(
                 tools=tools,
                 input=messages,
             )
+
+            for item in response.output:
+                if item.type == "mcp_call":
+                    print(
+                        f"[MCP] {item.server_label}.{item.name} | Parameter: {item.arguments}",
+                        flush=True,
+                    )
+                    if item.error:
+                        print(f"[MCP-Fehler] {encoded(item.error)}", flush=True)
 
             # Preserve the full output, including reasoning and tool calls.
             messages.extend(response_input_item(item) for item in response.output)
