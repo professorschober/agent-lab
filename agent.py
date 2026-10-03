@@ -25,7 +25,7 @@ def encoded(value):
     """Serialize JSON data, including OpenAI SDK response objects."""
     def serialize(item):
         if callable(getattr(item, "model_dump", None)):
-            return item.model_dump(mode="json")
+            return item.model_dump(mode="json", by_alias=True, exclude_none=True)
         raise TypeError(f"Object of type {type(item).__name__} is not JSON serializable")
 
     return json.dumps(value, ensure_ascii=False, default=serialize)
@@ -191,9 +191,13 @@ TOOL_DEFINITIONS = [
 def response_input_item(item):
     """Convert response output/history into API input without output-only status."""
     if callable(getattr(item, "model_dump", None)):
-        item = item.model_dump(mode="json", exclude_none=True)
+        item = item.model_dump(mode="json", by_alias=True, exclude_none=True)
     if isinstance(item, dict):
-        return {key: value for key, value in item.items() if key != "status"}
+        normalized = {key: value for key, value in item.items() if key != "status"}
+        # Migrate histories saved with Python attribute names by older versions.
+        if "async_" in normalized:
+            normalized.setdefault("async", normalized.pop("async_"))
+        return normalized
     return item
 
 
