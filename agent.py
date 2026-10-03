@@ -3,10 +3,34 @@ import json
 import math
 import operator
 import os
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
 
 from openai import OpenAI
 
 SYSTEM_PROMPT = """You are a code analysis agent. Given a goal, use the available tools to inspect files and return concise, factual answers. Always cite the file paths you read. Never invent file contents."""
+
+
+class Memory:
+    """Separate connections; completed histories are saved atomically."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.connect() as db:
+            db.execute("CREATE TABLE IF NOT EXISTS sessions (project TEXT, session TEXT, history TEXT NOT NULL, updated TEXT, PRIMARY KEY(project, session))")
+            db.execute("CREATE TABLE IF NOT EXISTS facts (project TEXT, key TEXT, value TEXT NOT NULL, source TEXT NOT NULL, updated TEXT, PRIMARY KEY(project, key))")
+
+    @contextmanager
+    def connect(self):
+        db = sqlite3.connect(self.path, timeout=10)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
 
 def list_files(directory: str) -> str:
     """List files in a directory."""
