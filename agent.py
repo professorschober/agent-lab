@@ -188,6 +188,15 @@ TOOL_DEFINITIONS = [
 ]
 
 
+def response_input_item(item):
+    """Convert response output/history into API input without output-only status."""
+    if callable(getattr(item, "model_dump", None)):
+        item = item.model_dump(mode="json", exclude_none=True)
+    if isinstance(item, dict):
+        return {key: value for key, value in item.items() if key != "status"}
+    return item
+
+
 def run_agent(
     goal: str,
     max_steps: int = 10,
@@ -229,7 +238,10 @@ def run_agent(
         }
         for tool in tool_definitions
     ]
-    messages = memory.load(session) if memory is not None else []
+    messages = [
+        response_input_item(item)
+        for item in (memory.load(session) if memory is not None else [])
+    ]
     messages.append({"role": "user", "content": goal})
 
     with OpenAI() as client:
@@ -255,7 +267,7 @@ def run_agent(
             )
 
             # Preserve the full output, including reasoning and tool calls.
-            messages.extend(response.output)
+            messages.extend(response_input_item(item) for item in response.output)
             if response.status != "completed":
                 return f"Agent response did not complete (status: {response.status})."
 
