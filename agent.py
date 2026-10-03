@@ -95,14 +95,15 @@ def run_agent(goal: str, max_steps: int = 10) -> str:
                 return response.output_text or "Agent finished with no text output."
 
             for call in tool_calls:
-                if call.name not in TOOLS:
-                    result = f"Error: tool '{call.name}' not found"
-                else:
+                tool_name = call.name
+                if tool_name in TOOLS:
                     try:
                         tool_input = json.loads(call.arguments)
-                        result = TOOLS[call.name](**tool_input)
-                    except (ValueError, TypeError) as e:
-                        result = f"Error: {e}"
+                        result = TOOLS[tool_name](**tool_input)
+                    except Exception as e:
+                        result = f"Tool '{tool_name}' raised an error: {e}. Try a different approach."
+                else:
+                    result = f"Error: tool '{tool_name}' not found. Available tools: {list(TOOLS.keys())}"
 
                 messages.append({
                     "type": "function_call_output",
