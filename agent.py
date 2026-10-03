@@ -153,6 +153,7 @@ def run_agent(goal: str, max_steps: int = 10) -> str:
 
             for call in tool_calls:
                 tool_name = call.name
+                print(f"Tool call: {tool_name} | Parameters: {call.arguments}", flush=True)
                 if tool_name in TOOLS:
                     try:
                         tool_input = json.loads(call.arguments)
