@@ -5,11 +5,23 @@ import operator
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from openai import OpenAI
 
 SYSTEM_PROMPT = """You are a code analysis agent. Given a goal, use the available tools to inspect files and return concise, factual answers. Always cite the file paths you read. Never invent file contents."""
+PROJECT = str(Path(os.environ.get("AGENT_ROOT", Path(__file__).parent)).resolve())
+
+
+def encoded(value):
+    """Serialize JSON data, including OpenAI SDK response objects."""
+    def serialize(item):
+        if callable(getattr(item, "model_dump", None)):
+            return item.model_dump(mode="json")
+        raise TypeError(f"Object of type {type(item).__name__} is not JSON serializable")
+
+    return json.dumps(value, ensure_ascii=False, default=serialize)
 
 
 class Memory:
@@ -30,6 +42,19 @@ class Memory:
                 yield db
         finally:
             db.close()
+
+    def load(self, session):
+        with self.connect() as db:
+            row = db.execute("SELECT history FROM sessions WHERE project=? AND session=?", (PROJECT, session)).fetchone()
+        return json.loads(row[0]) if row else []
+
+    def save(self, session, history):
+        with self.connect() as db:
+            db.execute("INSERT OR REPLACE INTO sessions VALUES (?,?,?,?)", (PROJECT, session, encoded(history), datetime.now(timezone.utc).isoformat()))
+
+    def clear(self, session):
+        with self.connect() as db:
+            db.execute("DELETE FROM sessions WHERE project=? AND session=?", (PROJECT, session))
 
 
 def list_files(directory: str) -> str:
