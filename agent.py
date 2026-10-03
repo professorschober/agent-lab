@@ -1,4 +1,7 @@
+import ast
 import json
+import math
+import operator
 import os
 
 from openai import OpenAI
@@ -21,10 +24,47 @@ def read_file(path: str) -> str:
     except Exception as e:
         return f"Error: {e}"
 
+def calculate(expression: str) -> str:
+    """Bounded arithmetic AST; never executes Python code."""
+    if not expression or len(expression) > 200:
+        raise ValueError("Ausdruck muss 1–200 Zeichen enthalten")
+    tree = ast.parse(expression, mode="eval")
+    if sum(1 for _ in ast.walk(tree)) > 80:
+        raise ValueError("Ausdruck ist zu komplex")
+    operations = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
+    }
+
+    def visit(node):
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            result = node.value
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            result = visit(node.operand) * (-1 if isinstance(node.op, ast.USub) else 1)
+        elif isinstance(node, ast.BinOp) and type(node.op) in operations:
+            left, right = visit(node.left), visit(node.right)
+            if isinstance(node.op, ast.Pow) and abs(right) > 12:
+                raise ValueError("Exponent muss zwischen -12 und 12 liegen")
+            result = operations[type(node.op)](left, right)
+        else:
+            raise ValueError("Nur Zahlen, Klammern und + - * / // % ** erlaubt")
+        if type(result) not in (int, float) or not math.isfinite(result) or abs(result) > 1e100:
+            raise ValueError("Ergebnis außerhalb des erlaubten Zahlenbereichs")
+        return result
+
+    return json.dumps({"expression": expression, "result": visit(tree.body)})
+
+
 # Tool registry: maps tool names to functions
 TOOLS = {
     "list_files": list_files,
     "read_file": read_file,
+    "calculate": calculate,
 }
 
 TOOL_DEFINITIONS = [
@@ -54,6 +94,20 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["path"]
+        }
+    },
+    {
+        "name": "calculate",
+        "description": "Evaluate bounded arithmetic without executing Python code. Returns JSON with the expression and result.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string",
+                    "description": "Arithmetic expression of 1–200 characters using numbers, parentheses and + - * / // % **. Exponents must be between -12 and 12."
+                }
+            },
+            "required": ["expression"]
         }
     }
 ]
