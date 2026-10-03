@@ -1,4 +1,7 @@
+import json
 import os
+
+from openai import OpenAI
 
 def list_files(directory: str) -> str:
     """List files in a directory."""
@@ -52,3 +55,64 @@ TOOL_DEFINITIONS = [
         }
     }
 ]
+
+
+def run_agent(goal: str, max_steps: int = 10) -> str:
+    """Run an agent loop until the goal is reached or max_steps exceeded."""
+    tools = [
+        {
+            "type": "function",
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": {
+                **tool["input_schema"],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        }
+        for tool in TOOL_DEFINITIONS
+    ]
+    messages = [{"role": "user", "content": goal}]
+
+    with OpenAI() as client:
+        for step in range(max_steps):
+            response = client.responses.create(
+                model="gpt-5-mini",
+                max_output_tokens=4096,
+                tools=tools,
+                input=messages,
+            )
+
+            # Preserve the full output, including reasoning and tool calls.
+            messages.extend(response.output)
+            if response.status != "completed":
+                return f"Agent response did not complete (status: {response.status})."
+
+            tool_calls = [
+                item for item in response.output if item.type == "function_call"
+            ]
+            if not tool_calls:
+                return response.output_text or "Agent finished with no text output."
+
+            for call in tool_calls:
+                if call.name not in TOOLS:
+                    result = f"Error: tool '{call.name}' not found"
+                else:
+                    try:
+                        tool_input = json.loads(call.arguments)
+                        result = TOOLS[call.name](**tool_input)
+                    except (ValueError, TypeError) as e:
+                        result = f"Error: {e}"
+
+                messages.append({
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": str(result),
+                })
+
+    return "Max steps reached without completion."
+
+
+if __name__ == "__main__":
+    result = run_agent("List the Python files in the current directory and summarize what the largest one does.")
+    print(result)
