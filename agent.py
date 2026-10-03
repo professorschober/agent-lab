@@ -162,7 +162,12 @@ TOOL_DEFINITIONS = [
 ]
 
 
-def run_agent(goal: str, max_steps: int = 10) -> str:
+def run_agent(
+    goal: str,
+    max_steps: int = 10,
+    memory: Memory | None = None,
+    session: str = "default",
+) -> str:
     """Run an agent loop until the goal is reached or max_steps exceeded."""
     tools = [
         {
@@ -177,7 +182,8 @@ def run_agent(goal: str, max_steps: int = 10) -> str:
         }
         for tool in TOOL_DEFINITIONS
     ]
-    messages = [{"role": "user", "content": goal}]
+    messages = memory.load(session) if memory is not None else []
+    messages.append({"role": "user", "content": goal})
 
     with OpenAI() as client:
         for step in range(max_steps):
@@ -198,6 +204,8 @@ def run_agent(goal: str, max_steps: int = 10) -> str:
                 item for item in response.output if item.type == "function_call"
             ]
             if not tool_calls:
+                if memory is not None:
+                    memory.save(session, messages)
                 return response.output_text or "Agent finished with no text output."
 
             for call in tool_calls:
@@ -222,5 +230,10 @@ def run_agent(goal: str, max_steps: int = 10) -> str:
 
 
 if __name__ == "__main__":
-    result = run_agent("List the Python files in the current directory and summarize what the largest one does.")
+    memory = Memory(Path(PROJECT) / ".memory" / "agent.db")
+    result = run_agent(
+        "List the Python files in the current directory and summarize what the largest one does.",
+        memory=memory,
+        session="code-analysis",
+    )
     print(result)
